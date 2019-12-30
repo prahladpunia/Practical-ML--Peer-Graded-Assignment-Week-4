@@ -1,0 +1,177 @@
+---
+title: "Practical Machine Learning - Course Project Week 4"
+author: "Prahlad"
+date: "28/12/2019"
+output: 
+  html_document: 
+    fig_caption: yes
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+## Executive Summary
+Here the qualitative and quantitative data collected by wearable devices (belt, forarms, arm) for 6 participants has been analyzed for barbell lifts both correctly and incorrectly in 5 different ways.
+* A- as specified 
+* B- streching Elbows to the front (wrong)
+* C- Lift dumbbell halfway (wrong) 
+* D- Lower dumbbell halfway (wrong) 
+* E- move hips to the front (wrong) 
+Here first the quality of execution is analyzed  and provide a feed back on correcting the mistakes. This was a controlled exercise. For more info refer  http://groupware.les.inf.puc-rio.br/har. 
+
+Goal of the Project 
+1. predict the manner in which they did the exercise by using  "classe" variable in the training set. 
+2. Create a report describing how models were built 
+3. Used cross validation
+4. Expected out of sample error 
+5. Reason for making the choices you did. 
+6. Use the prediction model to predict 20 different test cases.
+
+The Model has been built to answer the above questions - Use the data base as input, clean the data, use the algorithms to build Training and Test data and then use the algorithms to do the predictions. Cross Validation is used as method for trainControl function.
+
+
+```{r  echo=FALSE }
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+```
+## Input Data the files used are available at 
+The training data:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+```{r }
+training<- read.csv("pml-training.csv") # Training Data
+testing<-read.csv("pml-testing.csv")  # Test Data
+
+##Split the data into Training data set and Test data set.
+
+inTrain<-createDataPartition(training$classe, p=.7, list=FALSE)
+TrainSet<-training[inTrain,]
+TestSet<-training[-inTrain,]
+dim(TrainSet)
+dim(TestSet)
+```
+## NZV - near zero values check and remove
+```{r echo=FALSE}
+NZV<-nearZeroVar(TrainSet)
+TrainSet<-TrainSet[,-NZV]
+TestSet<- TestSet[,-NZV]
+dim(TrainSet)
+dim(TestSet)
+```
+
+## Check and remove those data that contains more than 95%  of NA. Filter these records.
+
+```{r echo=FALSE}
+AllNA<- sapply(TrainSet, function(x) mean(is.na(x)))> 0.95
+TrainSet<-TrainSet[, AllNA==FALSE]
+TestSet<-TestSet[, AllNA==FALSE]
+dim(TrainSet)   
+dim(TestSet)
+
+```
+
+## Remove the column 1 to 5 as these are not related to the model.
+
+```{r}
+TrainSet<- TrainSet[, -(1:5)]
+TestSet<- TestSet[, -(1:5)]
+dim(TrainSet)
+dim(TestSet)
+
+```
+
+## Model Random Forest 
+
+```{r}
+set.seed(2345)
+library(e1071)
+controlRF<-trainControl(method="cv", number=3, verboseIter=FALSE)
+modFitRandForest<- train(classe~., data=TrainSet, method="rf", trControl=controlRF)
+modFitRandForest$finalModel
+
+```
+
+## Predict Random Forest Model 
+
+```{r}
+predRandForest<- predict(modFitRandForest, newdata=TestSet)
+confMatRandForest<-confusionMatrix(predRandForest, TestSet$classe)
+confMatRandForest
+```
+
+## Plot of Random Forest 
+
+```{r}
+plot(confMatRandForest$table, col=confMatRandForest$byClass, main= paste("Random Forest - Accuracy =" , round(confMatRandForest$overall["Accuracy"], 4)))
+
+```
+
+## Fit Model - GBM Model
+
+```{r}
+set.seed(999)
+library(gbm)
+controlGBM<- trainControl(method="repeatedcv", number=5, repeats=1)
+modFitGBM<- train(classe~., data=TrainSet, method="gbm", trControl= controlGBM, verbose=FALSE)
+modFitGBM$finalModel
+
+```
+
+## Check the Accuracy of Model - GBM - test data set
+
+```{r}
+predictGBM<- predict(modFitGBM, newdata=TestSet)
+confMatGBM<-confusionMatrix(predictGBM, TestSet$classe)
+confMatGBM
+```
+
+##Plot
+
+```{r}
+plot(confMatGBM$table, col=confMatGBM$byClass, main= paste("GBM-Accuracy=", round(confMatGBM$overall["Accuracy"], 4)))
+```
+##Decision Tree Method
+
+```{r}
+decisionTreeMod<-train(classe~., method="rpart", data= TrainSet)
+decisionTreePred<- predict(decisionTreeMod, newdata=TestSet)
+confusionMatrix(TestSet$classe, decisionTreePred)
+```
+
+##Plot Decisioon Tree
+
+```{r}
+rpart.plot(decisionTreeMod$finalModel)
+```
+
+
+## Final Prediction based on RF Test Data 
+
+```{r}
+predictTEST<- predict(modFitRandForest, newdata= testing)
+predictTEST
+```
+
+
+##Results and Discussions
+The overall accuracy of Random Forest Model is better than GBM model. The RandomeForest Model is selected for the final prediction.
+
+## References
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.
+Cited by 2 (Google Scholar)
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz69PPVYt9p
